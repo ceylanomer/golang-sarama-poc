@@ -1,0 +1,11 @@
+kafka:
+  brokers:
+    - localhost:9092
+  group_id: my-sarama-consumer-group
+  topics:
+    sarama-topic-1: Product update events
+    sarama-topic-2: Product delete events
+  init_offset: oldest
+
+logger:
+  level: info 
