@@ -11,6 +11,11 @@ import (
 type Config struct {
 	Kafka  KafkaConfig
 	Logger LoggerConfig
+	Jaeger JaegerConfig `yaml:"jaeger"`
+}
+
+type JaegerConfig struct {
+	URL string `yaml:"url"`
 }
 
 // KafkaConfig holds Kafka-specific configuration
@@ -64,6 +69,10 @@ func Load() (*Config, error) {
 	}
 	config.Logger = LoggerConfig{
 		Level: v.GetString("logger.level"),
+	}
+
+	config.Jaeger = JaegerConfig{
+		URL: v.GetString("jaeger.url"),
 	}
 
 	// Validate config

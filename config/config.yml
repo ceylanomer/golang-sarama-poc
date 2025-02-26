@@ -8,4 +8,7 @@ kafka:
   init_offset: oldest
 
 logger:
-  level: info 
+  level: info
+
+jaeger:
+  url: localhost:4318

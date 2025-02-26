@@ -1,14 +1,20 @@
 package main
 
 import (
+	"encoding/json"
+	"golang-sarama-poc/models"
+	"golang-sarama-poc/pkg/tracer"
 	"os"
 	"os/signal"
 	"syscall"
 
-	"golang-sarama-poc/consumer"
+	"github.com/gofiber/fiber/v2"
+
 	"golang-sarama-poc/handlers"
 	"golang-sarama-poc/pkg/config"
+	"golang-sarama-poc/pkg/consumer"
 	_ "golang-sarama-poc/pkg/log"
+	"golang-sarama-poc/pkg/producer"
 
 	"go.uber.org/zap"
 )
@@ -21,6 +27,35 @@ func main() {
 		// Use standard log until our logger is initialized
 		panic("Failed to load configuration: " + err.Error())
 	}
+
+	app := fiber.New()
+
+	_ = tracer.InitTracer(cfg.Jaeger)
+	// Create producer
+	kafkaProducer, err := producer.NewKafkaProducer(cfg.Kafka.Brokers)
+	if err != nil {
+		zap.L().Fatal("Failed to create producer", zap.Error(err))
+	}
+	defer kafkaProducer.Close()
+
+	app.Post("/produce", func(c *fiber.Ctx) error {
+
+		event := models.ProductEvent{
+			ID:   "1",
+			Name: "Product 2",
+		}
+		jsonData, err := json.Marshal(event)
+		if err != nil {
+			return c.Status(500).SendString("JSON marshal hatası")
+		}
+
+		// Kafka'ya mesaj gönder
+		err = kafkaProducer.SendMessage("sarama-topic-1", "1", jsonData)
+		if err != nil {
+			return c.Status(500).SendString("Kafka'ya mesaj gönderilemedi")
+		}
+		return c.SendString("Mesaj gönderildi!")
+	})
 
 	// Create consumer
 	kafkaConsumer, err := consumer.NewKafkaConsumer(cfg.Kafka.Brokers, cfg.Kafka.GroupID, cfg.Kafka.InitOffset)
@@ -49,6 +84,7 @@ func main() {
 
 	zap.L().Info("Consumer started successfully")
 
+	app.Listen(":8081")
 	// Signal handling for graceful shutdown
 	sigterm := make(chan os.Signal, 1)
 	signal.Notify(sigterm, syscall.SIGINT, syscall.SIGTERM)

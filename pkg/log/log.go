@@ -23,7 +23,7 @@ func init() {
 
 	// Create logger
 	logger := zap.New(core, zap.AddCaller())
-	
+
 	// Replace global logger
 	zap.ReplaceGlobals(logger)
 }

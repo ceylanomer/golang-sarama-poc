@@ -4,4 +4,4 @@ package models
 type ProductEvent struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
-} 
+}
