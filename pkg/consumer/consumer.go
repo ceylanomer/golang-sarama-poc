@@ -2,9 +2,6 @@ package consumer
 
 import (
 	"context"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/propagation"
 	"sync"
 
 	"github.com/IBM/sarama"
@@ -115,21 +112,8 @@ func (h *consumerGroupHandler) Cleanup(_ sarama.ConsumerGroupSession) error {
 }
 
 func (h *consumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
-	tracer := otel.Tracer("kafka-consumer")
 
 	for message := range claim.Messages() {
-		carrier := propagation.MapCarrier{}
-		for _, h := range message.Headers {
-			carrier[string(h.Key)] = string(h.Value)
-		}
-
-		propagator := otel.GetTextMapPropagator()
-		ctx := propagator.Extract(context.Background(), carrier)
-
-		// Yeni span oluştur ve parent trace ID'yi bağla
-		ctx, span := tracer.Start(ctx, "consumeMessage")
-		span.SetAttributes(attribute.String("kafka.topic", message.Topic))
-		defer span.End()
 
 		if handler, ok := h.handlers[message.Topic]; ok {
 			if err := handler(message); err != nil {

@@ -14,24 +14,7 @@ import (
 
 // Topic1Handler processes product update events
 func Topic1Handler(message *sarama.ConsumerMessage) error {
-	//tracer := otel.Tracer("kafka-consumer")
-	//var parentTraceID string
-	//for _, h := range message.Headers {
-	//	if string(h.Key) == "trace_id" {
-	//		parentTraceID = string(h.Value)
-	//		break
-	//	}
-	//}
-	//ctx := context.Background()
-	//opts := []trace.SpanStartOption{}
-	//if parentTraceID != "" {
-	//	opts = append(opts, trace.WithAttributes(attribute.String("parent.trace_id", parentTraceID)))
-	//}
-	//
-	//// Yeni bir span oluştur
-	//ctx, span := tracer.Start(ctx, "consumeMessage", opts...)
-	//span.SetAttributes(attribute.String("kafka.topic", message.Topic))
-	//defer span.End()
+	// Create context for OpenTelemetry
 	tracer := otel.Tracer("kafka-consumer")
 	carrier := propagation.MapCarrier{}
 	for _, h := range message.Headers {
@@ -41,7 +24,7 @@ func Topic1Handler(message *sarama.ConsumerMessage) error {
 	propagator := otel.GetTextMapPropagator()
 	ctx := propagator.Extract(context.Background(), carrier)
 
-	// Yeni span oluştur ve parent trace ID'yi bağla
+	// Create a new span and link it to the parent trace ID
 	ctx, span := tracer.Start(ctx, "consumeMessage")
 	span.SetAttributes(attribute.String("kafka.topic", message.Topic))
 	defer span.End()
@@ -62,9 +45,6 @@ func Topic1Handler(message *sarama.ConsumerMessage) error {
 		zap.String("topic", message.Topic),
 		zap.Int32("partition", message.Partition),
 		zap.Int64("offset", message.Offset))
-
-	// Process the product update event
-	// ... your business logic here ...
 
 	return nil
 }
