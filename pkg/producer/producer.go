@@ -2,24 +2,26 @@ package producer
 
 import (
 	"context"
+
 	"github.com/IBM/sarama"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 	"go.uber.org/zap"
 )
 
-// KafkaProducer manages Kafka producer operations
+// KafkaProducer manages Kafka producer operations and maintains connection to Kafka brokers
 type KafkaProducer struct {
-	producer sarama.SyncProducer
-	brokers  []string
+	producer sarama.SyncProducer // Synchronous producer instance
+	brokers  []string            // List of Kafka broker addresses
 }
 
-// NewKafkaProducer creates a new KafkaProducer
+// NewKafkaProducer creates a new KafkaProducer with the specified broker configuration
 func NewKafkaProducer(brokers []string) (*KafkaProducer, error) {
+	// Configure Kafka producer settings
 	config := sarama.NewConfig()
-	config.Producer.RequiredAcks = sarama.WaitForAll
-	config.Producer.Retry.Max = 5
-	config.Producer.Return.Successes = true
+	config.Producer.RequiredAcks = sarama.WaitForAll // Wait for all replicas to acknowledge
+	config.Producer.Retry.Max = 5                    // Retry up to 5 times on failure
+	config.Producer.Return.Successes = true          // Required for SyncProducer
 
 	producer, err := sarama.NewSyncProducer(brokers, config)
 	if err != nil {
@@ -32,21 +34,21 @@ func NewKafkaProducer(brokers []string) (*KafkaProducer, error) {
 	}, nil
 }
 
-// SendMessage sends a message to specified topic
+// SendMessage sends a message to specified topic with OpenTelemetry tracing
 func (p *KafkaProducer) SendMessage(topic string, key string, value []byte) error {
-
+	// Initialize OpenTelemetry tracer
 	tracer := otel.Tracer("kafka-producer")
 
-	// OpenTelemetry için context oluştur
+	// Create context for OpenTelemetry
 	ctx, span := tracer.Start(context.Background(), "produceMessage")
 	defer span.End()
 
-	// OpenTelemetry propagator ile trace bilgilerini header’a koy
+	// Put trace information into header with OpenTelemetry propagator
 	propagator := otel.GetTextMapPropagator()
 	carrier := propagation.MapCarrier{}
 	propagator.Inject(ctx, carrier)
 
-	// Kafka mesajına traceparent ekle
+	// Add traceparent to Kafka message headers for distributed tracing
 	var headers []sarama.RecordHeader
 	for k, v := range carrier {
 		headers = append(headers, sarama.RecordHeader{
@@ -55,16 +57,19 @@ func (p *KafkaProducer) SendMessage(topic string, key string, value []byte) erro
 		})
 	}
 
+	// Prepare Kafka message with headers and payload
 	msg := &sarama.ProducerMessage{
 		Topic:   topic,
 		Value:   sarama.ByteEncoder(value),
 		Headers: headers,
 	}
 
+	// Add message key if provided
 	if key != "" {
 		msg.Key = sarama.StringEncoder(key)
 	}
 
+	// Send message to Kafka and get partition and offset
 	partition, offset, err := p.producer.SendMessage(msg)
 	if err != nil {
 		span.RecordError(err)
@@ -74,6 +79,7 @@ func (p *KafkaProducer) SendMessage(topic string, key string, value []byte) erro
 		return err
 	}
 
+	// Log successful message delivery
 	zap.L().Debug("Message sent successfully",
 		zap.String("topic", topic),
 		zap.Int32("partition", partition),
@@ -82,7 +88,7 @@ func (p *KafkaProducer) SendMessage(topic string, key string, value []byte) erro
 	return nil
 }
 
-// Close closes the producer
+// Close gracefully shuts down the Kafka producer
 func (p *KafkaProducer) Close() error {
 	if err := p.producer.Close(); err != nil {
 		zap.L().Error("Failed to close producer", zap.Error(err))

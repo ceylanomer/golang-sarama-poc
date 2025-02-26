@@ -20,50 +20,54 @@ import (
 )
 
 func main() {
-	// Load configuration
+	// Load configuration from environment or config files
 	cfg, err := config.Load()
 	defer zap.L().Sync()
 	if err != nil {
-		// Use standard log until our logger is initialized
 		panic("Failed to load configuration: " + err.Error())
 	}
 
+	// Initialize Fiber web framework
 	app := fiber.New()
 
+	// Initialize OpenTelemetry tracer with Jaeger configuration
 	_ = tracer.InitTracer(cfg.Jaeger)
-	// Create producer
+
+	// Initialize Kafka producer
 	kafkaProducer, err := producer.NewKafkaProducer(cfg.Kafka.Brokers)
 	if err != nil {
 		zap.L().Fatal("Failed to create producer", zap.Error(err))
 	}
 	defer kafkaProducer.Close()
 
+	// REST endpoint to produce messages to Kafka
 	app.Post("/produce", func(c *fiber.Ctx) error {
-
+		// Create a sample product event
+		// TODO: Replace with actual request body parsing
 		event := models.ProductEvent{
 			ID:   "1",
 			Name: "Product 2",
 		}
 		jsonData, err := json.Marshal(event)
 		if err != nil {
-			return c.Status(500).SendString("JSON marshal hatası")
+			return c.Status(500).SendString("JSON marshal error")
 		}
 
-		// Kafka'ya mesaj gönder
+		// Send message to Kafka
 		err = kafkaProducer.SendMessage("sarama-topic-1", "1", jsonData)
 		if err != nil {
-			return c.Status(500).SendString("Kafka'ya mesaj gönderilemedi")
+			return c.Status(500).SendString("Failed to send message to Kafka")
 		}
-		return c.SendString("Mesaj gönderildi!")
+		return c.SendString("Message sent successfully!")
 	})
 
-	// Create consumer
+	// Initialize Kafka consumer with configuration
 	kafkaConsumer, err := consumer.NewKafkaConsumer(cfg.Kafka.Brokers, cfg.Kafka.GroupID, cfg.Kafka.InitOffset)
 	if err != nil {
 		zap.L().Fatal("Failed to create consumer", zap.Error(err))
 	}
 
-	// Register handlers for all topics in config
+	// Register message handlers for each configured Kafka topic
 	for topic := range cfg.Kafka.Topics {
 		switch topic {
 		case "sarama-topic-1":
@@ -77,15 +81,17 @@ func main() {
 		}
 	}
 
-	// Start the consumer
+	// Start consuming messages from Kafka
 	if err := kafkaConsumer.Start(); err != nil {
 		zap.L().Fatal("Failed to start consumer", zap.Error(err))
 	}
 
 	zap.L().Info("Consumer started successfully")
 
-	app.Listen(":8081")
-	// Signal handling for graceful shutdown
+	// Start the HTTP server in a separate goroutine
+	go app.Listen(":8081")
+
+	// Setup graceful shutdown handling
 	sigterm := make(chan os.Signal, 1)
 	signal.Notify(sigterm, syscall.SIGINT, syscall.SIGTERM)
 	<-sigterm
